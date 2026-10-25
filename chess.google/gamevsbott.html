@@ -6,7 +6,7 @@
     <title>Document</title>
 </head>
 <body>
-  <h1>Play chess vs <span class="google-word"><span class="google-blue">G</span><span class="google-red">o</span><span class="google-yellow">o</span><span class="google-blue">g</span><span class="google-green">l</span><span class="google-red">e</span></span> AI</h1>
+  <h1>Play chess vs <span class="google-word"><span class="google-blue">G</span><span class="google-red">o</span><span class="google-yellow">o</span><span class="google-blue">g</span><span class="google-green">l</span><span class="google-red">e</span></span></h1>
   <div id="colorChoice">
 <div id="colorButtons">
 <button class="google-btn" onclick="chooseColor('w')">Play as White</button>
@@ -102,8 +102,20 @@ K:"♔", Q:"♕", R:"♖", B:"♗", N:"♘", P:"♙",
 k:"♚", q:"♛", r:"♜", b:"♝", n:"♞", p:"♟"
 };
 
-const game = new Chess();
-const engine = new Worker("stockfish/stockfish.js");
+let game;
+try {
+  game = new Chess();
+} catch (error) {
+  console.error("Failed to initialize chess.js:", error);
+}
+
+const enginePath = new URL("./stockfish/stockfish.js", window.location.href).href;
+let engine = null;
+try {
+  engine = new Worker(enginePath);
+} catch (error) {
+  console.error("Failed to load Stockfish worker:", error);
+}
 
 let playerColor = null;
 let engineReady = false;
@@ -111,182 +123,200 @@ let thinking = false;
 let draggedFrom = null;
 let candidateMoves = new Map();
 let aiLevel = getLevelFromLocalStorage();
-document.getElementById("aiLevelValue").textContent = aiLevel;
-
-
-
-
+const aiLevelValue = document.getElementById("aiLevelValue");
+if (aiLevelValue) {
+  aiLevelValue.textContent = String(aiLevel);
+}
 
 function getLevelFromLocalStorage() {
-const storedLevel = Number.parseInt(localStorage.getItem("level"), 10);
-return Number.isInteger(storedLevel) && storedLevel > 0 ? storedLevel : 10;
+  try {
+    const storedLevel = Number.parseInt(localStorage.getItem("level"), 10);
+    return Number.isInteger(storedLevel) && storedLevel > 0 ? storedLevel : 10;
+  } catch (error) {
+    console.warn("localStorage is unavailable, using default AI level.", error);
+    return 10;
+  }
 }
 
 function chooseColor(color) {
-if (playerColor !== null) return;
+  if (playerColor !== null || !game) return;
 
-playerColor = color;
-document.getElementById("colorButtons").remove();
+  playerColor = color;
+  const colorButtons = document.getElementById("colorButtons");
+  if (colorButtons) {
+    colorButtons.remove();
+  }
 
-renderBoard();
+  renderBoard();
 
-// White moves first in chess. If the player chooses Black,
-// Stockfish must make the first move.
-if (game.turn() !== playerColor) {
-askStockfish();
-}
+  if (game.turn() !== playerColor) {
+    askStockfish();
+  }
 }
 
 function renderBoard() {
-const boardElement = document.getElementById("board");
-boardElement.replaceChildren();
+  if (!game) return;
 
-for (let r = 0; r < 8; r++) {
-for (let c = 0; c < 8; c++) {
-const row = playerColor === "b" ? 7 - r : r;
-const col = playerColor === "b" ? 7 - c : c;
-const squareName = files[col] + (8 - row);
-const piece = game.board()[row][col];
+  const boardElement = document.getElementById("board");
+  if (!boardElement) return;
 
-const square = document.createElement("div");
-square.className = "square " +
-((row + col) % 2 === 0 ? "light" : "dark");
-square.dataset.square = squareName;
+  boardElement.replaceChildren();
 
-if (piece) {
-const element = document.createElement("span");
-element.className = "piece";
-element.textContent = symbols[piece.color === "w"
-? piece.type.toUpperCase()
-: piece.type];
-element.draggable = playerColor !== null &&
-piece.color === playerColor &&
-game.turn() === playerColor &&
-!thinking &&
-!game.game_over();
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const row = playerColor === "b" ? 7 - r : r;
+      const col = playerColor === "b" ? 7 - c : c;
+      const squareName = files[col] + (8 - row);
+      const piece = game.board()[row][col];
 
-element.addEventListener("dragstart", event => {
-if (!element.draggable) {
-event.preventDefault();
-return;
-}
-draggedFrom = squareName;
-event.dataTransfer.setData("text/plain", squareName);
-});
+      const square = document.createElement("div");
+      square.className = "square " +
+      ((row + col) % 2 === 0 ? "light" : "dark");
+      square.dataset.square = squareName;
 
-square.appendChild(element);
-}
+      if (piece) {
+        const element = document.createElement("span");
+        element.className = "piece";
+        element.textContent = symbols[piece.color === "w"
+        ? piece.type.toUpperCase()
+        : piece.type];
+        element.draggable = playerColor !== null &&
+        piece.color === playerColor &&
+        game.turn() === playerColor &&
+        !thinking &&
+        !game.game_over();
 
-square.addEventListener("dragover", e => e.preventDefault());
+        element.addEventListener("dragstart", event => {
+          if (!element.draggable) {
+            event.preventDefault();
+            return;
+          }
+          draggedFrom = squareName;
+          event.dataTransfer.setData("text/plain", squareName);
+        });
 
-square.addEventListener("drop", e => {
-e.preventDefault();
+        square.appendChild(element);
+      }
 
-if (!draggedFrom || thinking || !playerColor ||
-game.turn() !== playerColor) return;
+      square.addEventListener("dragover", e => e.preventDefault());
 
-const move = game.move({
-from: draggedFrom,
-to: squareName,
-promotion: "q"
-});
+      square.addEventListener("drop", e => {
+        e.preventDefault();
 
-draggedFrom = null;
+        if (!draggedFrom || thinking || !playerColor || !game ||
+        game.turn() !== playerColor) return;
 
-if (!move) {
-// Illegal move: the board never changed.
-renderBoard();
-return;
-}
+        const move = game.move({
+          from: draggedFrom,
+          to: squareName,
+          promotion: "q"
+        });
 
-renderBoard();
+        draggedFrom = null;
 
-if (!game.game_over()) askStockfish();
-});
+        if (!move) {
+          renderBoard();
+          return;
+        }
 
-boardElement.appendChild(square);
-}
-}
+        renderBoard();
+
+        if (!game.game_over()) askStockfish();
+      });
+
+      boardElement.appendChild(square);
+    }
+  }
 }
 
 function askStockfish() {
-if (!engineReady || thinking || game.game_over()) return;
+  if (!engine || !engineReady || thinking || !game || game.game_over()) return;
 
-thinking = true;
-candidateMoves.clear();
+  thinking = true;
+  candidateMoves.clear();
+  renderBoard();
+
+  engine.postMessage("position fen " + game.fen());
+  engine.postMessage("go depth 10");
+}
+
+if (engine) {
+  engine.onmessage = e => {
+    const message = String(e.data).trim();
+    console.log("Stockfish:", message);
+
+    if (message === "uciok") {
+      engine.postMessage("setoption name MultiPV value 5");
+      engine.postMessage("isready");
+    }
+
+    if (message === "readyok") {
+      engineReady = true;
+
+      if (playerColor !== null && game && game.turn() !== playerColor) {
+        askStockfish();
+      }
+    }
+
+    if (message.startsWith("bestmove")) {
+      thinking = false;
+
+      const tokens = message.split(/\s+/);
+      const bestMove = tokens[1];
+      if (!bestMove || bestMove === "(none)" || bestMove === "0000") {
+        renderBoard();
+        return;
+      }
+
+      const alternatives = [...new Set(candidateMoves.values())]
+        .filter(move => move !== bestMove);
+      const bestMoveProbability = Math.min(1, aiLevel / 6);
+      const move = alternatives.length > 0 && Math.random() >= bestMoveProbability
+        ? alternatives[Math.floor(Math.random() * alternatives.length)]
+        : bestMove;
+
+      if (move && move !== "(none)" && move !== "0000") {
+        const result = game.move({
+          from: move.slice(0, 2),
+          to: move.slice(2, 4),
+          promotion: move[4] || "q"
+        });
+
+        if (!result) {
+          console.error("Stockfish returned an illegal move:", move);
+        }
+      }
+
+      renderBoard();
+    }
+
+    if (message.startsWith("info ")) {
+      const tokens = message.split(/\s+/);
+      const multipvIndex = tokens.indexOf("multipv");
+      const pvIndex = tokens.indexOf("pv");
+
+      if (multipvIndex !== -1 && pvIndex !== -1) {
+        const variation = Number.parseInt(tokens[multipvIndex + 1], 10);
+        const move = tokens[pvIndex + 1];
+
+        if (Number.isInteger(variation) && variation >= 1 && variation <= 5 && move) {
+          candidateMoves.set(variation, move);
+        }
+      }
+    }
+  };
+
+  engine.onerror = e => {
+    console.error("Stockfish loading error:", e);
+    engineReady = false;
+    thinking = false;
+  };
+}
+
 renderBoard();
-
-engine.postMessage("position fen " + game.fen());
-engine.postMessage("go depth 10");
+if (engine) {
+  engine.postMessage("uci");
 }
-
-engine.onmessage = e => {
-const message = String(e.data).trim();
-console.log("Stockfish:", message);
-
-if (message === "uciok") {
-engine.postMessage("setoption name MultiPV value 5");
-engine.postMessage("isready");
-}
-
-if (message === "readyok") {
-engineReady = true;
-
-if (playerColor !== null &&
-game.turn() !== playerColor) {
-askStockfish();
-}
-}
-
-if (message.startsWith("bestmove")) {
-thinking = false;
-
-const bestMove = message.split(/\s+/)[1];
-const alternatives = [...new Set(candidateMoves.values())]
-.filter(move => move !== bestMove);
-const bestMoveProbability = Math.min(1, aiLevel / 6);
-const move = alternatives.length > 0 &&
-Math.random() >= bestMoveProbability
-? alternatives[Math.floor(Math.random() * alternatives.length)]
-: bestMove;
-
-if (move && move !== "(none)" && move !== "0000") {
-const result = game.move({
-from: move.slice(0, 2),
-to: move.slice(2, 4),
-promotion: move[4] || "q"
-});
-
-if (!result) {
-console.error("Stockfish returned an illegal move:", move);
-}
-}
-
-renderBoard();
-}
-
-if (message.startsWith("info ")) {
-const tokens = message.split(/\s+/);
-const multipvIndex = tokens.indexOf("multipv");
-const pvIndex = tokens.indexOf("pv");
-
-if (multipvIndex !== -1 && pvIndex !== -1) {
-const variation = Number.parseInt(tokens[multipvIndex + 1], 10);
-const move = tokens[pvIndex + 1];
-
-if (Number.isInteger(variation) && variation >= 1 && variation <= 5 && move) {
-candidateMoves.set(variation, move);
-}
-}
-}
-};
-
-engine.onerror = e => {
-console.error("Stockfish loading error:", e);
-};
-
-renderBoard();
-engine.postMessage("uci");
 </script>
 </body>
 </html>
