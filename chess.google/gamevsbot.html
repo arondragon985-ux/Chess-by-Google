@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>play/vs/bot</title>
+</head>
+<body>
+    <h1><span class="google-blue">Chess</span> by <span class="google-red">Google</span></h1>
+        <div class="button-container">
+            <a href="index.html" class="google-btn" onclick="Setlevel(1);">LV.1</a>
+            <a href="index.html" class="google-btn" onclick="Setlevel(2);">LV.2</a>
+            <a href="index.html" class="google-btn" onclick="Setlevel(3);">LV.3</a>
+            <a href="index.html" class="google-btn" onclick="Setlevel(4);">LV.4</a>
+            <a href="index.html" class="google-btn" onclick="Setlevel(5);">LV.5</a>
+            <a href="index.html" class="google-btn" onclick="Setlevel(6);">LV.6</a>
+        </div>
+    <style>
+                * {
+                    box-sizing: border-box;
+                }
+                body {
+                    margin: 0;
+                    min-height: 100vh;
+                    padding: 32px 20px;
+                    background: rgb(19, 19, 20);
+                    color: white;
+                    font-family: 'Google Sans', Arial, Helvetica, sans-serif;
+                    text-align: center;
+                }
+                h1 {
+                    margin: 0;
+                    font-size: 2rem;
+                    font-weight: 600;
+                }
+                .google-blue {
+                    color: #4285f4;
+                }
+                .google-red {
+                    color: #ea4335;
+                }
+                .button-container {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 24px;
+                    justify-content: center;
+                    max-width: 840px;
+                    margin: 40px auto 0;
+                }
+                .google-btn {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 56px;
+                    width: 120px;
+                    border-radius: 28px;
+                    color: #fff;
+                    background: #4285f4;
+                    font-family: 'Google Sans', Arial, Helvetica, sans-serif;
+                    font-size: 1.2rem;
+                    font-weight: 500;
+                    text-decoration: none;
+                    box-shadow: 0 2px 4px rgba(60,64,67,.15);
+                    border: none;
+                    transition: background 0.2s, box-shadow 0.2s;
+                }
+                .google-btn:hover {
+                    background: #3367d6;
+                    box-shadow: 0 4px 12px rgba(60,64,67,.18);
+                }
+        </style>
+    <script>
+        function Setlevel(level) {
+            localStorage.setItem("level", level);
+        }
+    </script>
+</body>
+</html>
