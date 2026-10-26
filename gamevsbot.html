@@ -109,7 +109,7 @@ try {
   console.error("Failed to initialize chess.js:", error);
 }
 
-const enginePath = new URL("./stockfish/stockfish.js", window.location.href).href;
+const enginePath = new URL("./chess.google/stockfish/stockfish.js", window.location.href).href;
 let engine = null;
 try {
   engine = new Worker(enginePath);
