@@ -18,12 +18,14 @@
     </div>
   </div>
 
-  <div id="controls" style="display:flex; justify-content:center; margin-bottom:14px;">
-    <button id="resignButton" class="google-btn" type="button" style="background:#ea4335; width: 140px;">Resign</button>
+  <div id="board"></div>
+
+  <div id="controls">
+    <button id="resignButton" class="google-btn" type="button" style="display:none; background:#ea4335;">Resign</button>
+    <button id="newGameButton" class="google-btn" type="button" style="display:none; background:#34a853;">New Game</button>
   </div>
 
-  <div id="statusMessage" aria-live="polite" style="min-height:24px; margin-bottom:12px; font-weight:600;"></div>
-  <div id="board"></div>
+  <div id="statusMessage" aria-live="polite" style="min-height:24px; margin-top:12px; font-weight:700; color:#fbbc05;"></div>
 
 <style>
 * {
@@ -32,7 +34,7 @@ box-sizing: border-box;
 body {
 margin: 0;
 min-height: 100vh;
-padding: 32px 20px;
+padding: 32px 20px 40px;
 background: rgb(19, 19, 20);
 color: white;
 font-family: 'Google Sans', Arial, Helvetica, sans-serif;
@@ -54,6 +56,14 @@ justify-content: center;
 flex-wrap: wrap;
 gap: 24px;
 margin-bottom: 24px;
+}
+#controls {
+display: flex;
+justify-content: center;
+align-items: center;
+flex-wrap: wrap;
+gap: 12px;
+margin-top: 16px;
 }
 .google-btn {
 display: inline-flex;
@@ -104,8 +114,6 @@ outline-offset: -3px;
 .dark { background: #5d5d5d; }
 .piece { cursor: grab; }
 .piece:active { cursor: grabbing; }
-#resignButton { background: #ea4335; }
-#statusMessage { color: #fbbc05; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 <script>
@@ -139,9 +147,11 @@ let selectedSquare = null;
 let candidateMoves = new Map();
 let aiLevel = getLevelFromLocalStorage();
 let resigned = false;
+
 const aiLevelValue = document.getElementById("aiLevelValue");
 const statusMessage = document.getElementById("statusMessage");
 const resignButton = document.getElementById("resignButton");
+const newGameButton = document.getElementById("newGameButton");
 
 if (aiLevelValue) {
   aiLevelValue.textContent = String(aiLevel);
@@ -151,6 +161,14 @@ function setStatus(message) {
   if (statusMessage) {
     statusMessage.textContent = message || "";
   }
+}
+
+function syncButtons() {
+  if (!resignButton || !newGameButton) return;
+
+  const showResign = playerColor !== null && !resigned && game && !game.game_over();
+  resignButton.style.display = showResign ? "inline-flex" : "none";
+  newGameButton.style.display = (resigned || (game && game.game_over())) ? "inline-flex" : "none";
 }
 
 function getLevelFromLocalStorage() {
@@ -163,62 +181,83 @@ function getLevelFromLocalStorage() {
   }
 }
 
-function resignGame() {
-  if (resigned || !game || !playerColor) return;
+function startNewGame() {
+  playerColor = null;
+  resigned = false;
+  selectedSquare = null;
+  draggedFrom = null;
+  candidateMoves.clear();
+  thinking = false;
+  game = new Chess();
 
-  const shouldResign = window.confirm("Resign? Google AI wins.");
-  if (!shouldResign) return;
+  const colorChoice = document.getElementById("colorChoice");
+  if (colorChoice) {
+    colorChoice.style.display = "block";
+  }
+
+  setStatus("Choose a color to start a new game.");
+  renderBoard();
+  syncButtons();
+}
+
+function resignGame() {
+  if (!playerColor || resigned || !game || game.game_over()) return;
+
+  const confirmResign = window.confirm("Resign? Google AI wins.");
+  if (!confirmResign) return;
 
   resigned = true;
   thinking = false;
+  selectedSquare = null;
   setStatus("You resigned. Google AI wins.");
   renderBoard();
-  if (engine) {
-    engine.postMessage("quit");
-  }
+  syncButtons();
 }
 
 if (resignButton) {
   resignButton.addEventListener("click", resignGame);
 }
 
+if (newGameButton) {
+  newGameButton.addEventListener("click", startNewGame);
+}
+
 function chooseColor(color) {
   if (playerColor !== null || !game) return;
 
   playerColor = color;
-  const colorButtons = document.getElementById("colorButtons");
-  if (colorButtons) {
-    colorButtons.remove();
+  const colorChoice = document.getElementById("colorChoice");
+  if (colorChoice) {
+    colorChoice.style.display = "none";
   }
 
   selectedSquare = null;
+  draggedFrom = null;
+  resigned = false;
   setStatus("");
   renderBoard();
+  syncButtons();
 
   if (game.turn() !== playerColor) {
     askStockfish();
   }
 }
 
-function handleMoveAttempt(from, to) {
+function makeMove(from, to) {
   if (!from || !to || resigned || !playerColor || !game || game.game_over() || game.turn() !== playerColor || thinking) {
     return false;
   }
 
   const move = game.move({ from, to, promotion: "q" });
-
   if (!move) {
-    if (game.get(to) && game.get(to).color === playerColor) {
-      selectedSquare = to;
-    } else {
-      selectedSquare = null;
-    }
+    selectedSquare = null;
     renderBoard();
     return false;
   }
 
   selectedSquare = null;
   renderBoard();
+  syncButtons();
 
   if (!game.game_over()) {
     askStockfish();
@@ -245,6 +284,7 @@ function renderBoard() {
       const square = document.createElement("div");
       square.className = "square " + ((row + col) % 2 === 0 ? "light" : "dark");
       square.dataset.square = squareName;
+
       if (selectedSquare === squareName) {
         square.classList.add("selected");
       }
@@ -270,7 +310,8 @@ function renderBoard() {
         });
 
         element.addEventListener("click", event => {
-          if (resigned || !playerColor || !game || game.turn() !== playerColor || thinking || game.game_over()) return;
+          event.stopPropagation();
+          if (resigned || !playerColor || !game || game.game_over() || game.turn() !== playerColor || thinking) return;
           if (piece.color !== playerColor) return;
 
           if (selectedSquare === squareName) {
@@ -309,12 +350,15 @@ function renderBoard() {
 
         selectedSquare = null;
         renderBoard();
+        syncButtons();
 
-        if (!game.game_over()) askStockfish();
+        if (!game.game_over()) {
+          askStockfish();
+        }
       });
 
       square.addEventListener("click", () => {
-        if (resigned || !playerColor || !game || game.turn() !== playerColor || thinking || game.game_over()) return;
+        if (resigned || !playerColor || !game || game.game_over() || game.turn() !== playerColor || thinking) return;
 
         if (!selectedSquare) {
           if (piece && piece.color === playerColor) {
@@ -330,13 +374,13 @@ function renderBoard() {
           return;
         }
 
-        if (piece && piece.color === playerColor && selectedSquare !== squareName) {
+        if (piece && piece.color === playerColor) {
           selectedSquare = squareName;
           renderBoard();
           return;
         }
 
-        handleMoveAttempt(selectedSquare, squareName);
+        makeMove(selectedSquare, squareName);
       });
 
       boardElement.appendChild(square);
@@ -350,6 +394,7 @@ function askStockfish() {
   thinking = true;
   candidateMoves.clear();
   renderBoard();
+  syncButtons();
 
   engine.postMessage("position fen " + game.fen());
   engine.postMessage("go depth 10");
@@ -380,6 +425,7 @@ if (engine) {
       const bestMove = tokens[1];
       if (!bestMove || bestMove === "(none)" || bestMove === "0000") {
         renderBoard();
+        syncButtons();
         return;
       }
 
@@ -403,6 +449,7 @@ if (engine) {
       }
 
       renderBoard();
+      syncButtons();
     }
 
     if (message.startsWith("info ")) {
@@ -425,10 +472,14 @@ if (engine) {
     console.error("Stockfish loading error:", e);
     engineReady = false;
     thinking = false;
+    syncButtons();
   };
 }
 
 renderBoard();
+setStatus("");
+syncButtons();
+
 if (engine) {
   engine.postMessage("uci");
 }
