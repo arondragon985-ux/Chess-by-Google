@@ -6,7 +6,7 @@
     <title>Document</title>
 </head>
 <body>
-  <h1>Play chess vs <span class="google-word"><span class="google-blue">G</span><span class="google-red">o</span><span class="google-yellow">o</span><span class="google-blue">g</span><span class="google-green">l</span><span class="google-red">e</span></span></h1>
+  <h1>Play chess vs <span class="google-word"><span class="google-blue">G</span><span class="google-red">o</span><span class="google-yellow">o</span><span class="google-blue">g</span><span class="google-red">l</span><span class="google-green">e</span></span></h1>
   <div id="colorChoice">
 <div id="colorButtons">
 <button class="google-btn" onclick="chooseColor('w')">Play as White</button>
@@ -109,7 +109,8 @@ try {
   console.error("Failed to initialize chess.js:", error);
 }
 
-const enginePath = new URL("./stockfish/stockfish.js", window.location.href).href;
+const engineRoot = window.location.pathname.includes("/chess.google/") ? "./" : "./chess.google/";
+const enginePath = new URL(`${engineRoot}stockfish/stockfish.js`, window.location.href).href;
 let engine = null;
 try {
   engine = new Worker(enginePath);
