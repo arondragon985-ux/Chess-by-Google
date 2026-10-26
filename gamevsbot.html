@@ -6,18 +6,24 @@
     <title>Document</title>
 </head>
 <body>
-  <h1>Play chess vs <span class="google-word"><span class="google-blue">G</span><span class="google-red">o</span><span class="google-yellow">o</span><span class="google-blue">g</span><span class="google-green">l</span><span class="google-red">e</span></span></h1>
-  <div id="colorChoice">
-<div id="colorButtons">
-<button class="google-btn" onclick="chooseColor('w')">Play as White</button>
-<button class="google-btn" onclick="chooseColor('b')">Play as Black</button>
-</div>
-<div>
-<p><span>#</span>Google AI level <span id="aiLevelValue"></span></p>
-</div>
-</div>
+  <h1>Play chess vs <span class="google-word"><span class="google-blue">G</span><span class="google-red">o</span><span class="google-yellow">o</span><span class="google-blue">g</span><span class="google-red">l</span><span class="google-green">e</span></span></h1>
 
-<div id="board"></div>
+  <div id="colorChoice">
+    <div id="colorButtons">
+      <button class="google-btn" onclick="chooseColor('w')">Play as White</button>
+      <button class="google-btn" onclick="chooseColor('b')">Play as Black</button>
+    </div>
+    <div>
+      <p><span>#</span>Google AI level <span id="aiLevelValue"></span></p>
+    </div>
+  </div>
+
+  <div id="controls" style="display:flex; justify-content:center; margin-bottom:14px;">
+    <button id="resignButton" class="google-btn" type="button" style="background:#ea4335; width: 140px;">Resign</button>
+  </div>
+
+  <div id="statusMessage" aria-live="polite" style="min-height:24px; margin-bottom:12px; font-weight:600;"></div>
+  <div id="board"></div>
 
 <style>
 * {
@@ -88,10 +94,18 @@ align-items: center;
 justify-content: center;
 font-size: min(9vw, 44px);
 user-select: none;
+position: relative;
+}
+.square.selected {
+outline: 3px solid #fbbc05;
+outline-offset: -3px;
 }
 .light { background: #a6afff; }
 .dark { background: #5d5d5d; }
 .piece { cursor: grab; }
+.piece:active { cursor: grabbing; }
+#resignButton { background: #ea4335; }
+#statusMessage { color: #fbbc05; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 <script>
@@ -121,11 +135,22 @@ let playerColor = null;
 let engineReady = false;
 let thinking = false;
 let draggedFrom = null;
+let selectedSquare = null;
 let candidateMoves = new Map();
 let aiLevel = getLevelFromLocalStorage();
+let resigned = false;
 const aiLevelValue = document.getElementById("aiLevelValue");
+const statusMessage = document.getElementById("statusMessage");
+const resignButton = document.getElementById("resignButton");
+
 if (aiLevelValue) {
   aiLevelValue.textContent = String(aiLevel);
+}
+
+function setStatus(message) {
+  if (statusMessage) {
+    statusMessage.textContent = message || "";
+  }
 }
 
 function getLevelFromLocalStorage() {
@@ -138,6 +163,25 @@ function getLevelFromLocalStorage() {
   }
 }
 
+function resignGame() {
+  if (resigned || !game || !playerColor) return;
+
+  const shouldResign = window.confirm("Resign? Google AI wins.");
+  if (!shouldResign) return;
+
+  resigned = true;
+  thinking = false;
+  setStatus("You resigned. Google AI wins.");
+  renderBoard();
+  if (engine) {
+    engine.postMessage("quit");
+  }
+}
+
+if (resignButton) {
+  resignButton.addEventListener("click", resignGame);
+}
+
 function chooseColor(color) {
   if (playerColor !== null || !game) return;
 
@@ -147,11 +191,40 @@ function chooseColor(color) {
     colorButtons.remove();
   }
 
+  selectedSquare = null;
+  setStatus("");
   renderBoard();
 
   if (game.turn() !== playerColor) {
     askStockfish();
   }
+}
+
+function handleMoveAttempt(from, to) {
+  if (!from || !to || resigned || !playerColor || !game || game.game_over() || game.turn() !== playerColor || thinking) {
+    return false;
+  }
+
+  const move = game.move({ from, to, promotion: "q" });
+
+  if (!move) {
+    if (game.get(to) && game.get(to).color === playerColor) {
+      selectedSquare = to;
+    } else {
+      selectedSquare = null;
+    }
+    renderBoard();
+    return false;
+  }
+
+  selectedSquare = null;
+  renderBoard();
+
+  if (!game.game_over()) {
+    askStockfish();
+  }
+
+  return true;
 }
 
 function renderBoard() {
@@ -170,21 +243,22 @@ function renderBoard() {
       const piece = game.board()[row][col];
 
       const square = document.createElement("div");
-      square.className = "square " +
-      ((row + col) % 2 === 0 ? "light" : "dark");
+      square.className = "square " + ((row + col) % 2 === 0 ? "light" : "dark");
       square.dataset.square = squareName;
+      if (selectedSquare === squareName) {
+        square.classList.add("selected");
+      }
 
       if (piece) {
         const element = document.createElement("span");
         element.className = "piece";
-        element.textContent = symbols[piece.color === "w"
-        ? piece.type.toUpperCase()
-        : piece.type];
+        element.textContent = symbols[piece.color === "w" ? piece.type.toUpperCase() : piece.type];
         element.draggable = playerColor !== null &&
-        piece.color === playerColor &&
-        game.turn() === playerColor &&
-        !thinking &&
-        !game.game_over();
+          piece.color === playerColor &&
+          game.turn() === playerColor &&
+          !thinking &&
+          !resigned &&
+          !game.game_over();
 
         element.addEventListener("dragstart", event => {
           if (!element.draggable) {
@@ -195,6 +269,20 @@ function renderBoard() {
           event.dataTransfer.setData("text/plain", squareName);
         });
 
+        element.addEventListener("click", event => {
+          if (resigned || !playerColor || !game || game.turn() !== playerColor || thinking || game.game_over()) return;
+          if (piece.color !== playerColor) return;
+
+          if (selectedSquare === squareName) {
+            selectedSquare = null;
+            renderBoard();
+            return;
+          }
+
+          selectedSquare = squareName;
+          renderBoard();
+        });
+
         square.appendChild(element);
       }
 
@@ -203,8 +291,7 @@ function renderBoard() {
       square.addEventListener("drop", e => {
         e.preventDefault();
 
-        if (!draggedFrom || thinking || !playerColor || !game ||
-        game.turn() !== playerColor) return;
+        if (!draggedFrom || thinking || resigned || !playerColor || !game || game.turn() !== playerColor) return;
 
         const move = game.move({
           from: draggedFrom,
@@ -215,13 +302,41 @@ function renderBoard() {
         draggedFrom = null;
 
         if (!move) {
+          selectedSquare = null;
           renderBoard();
           return;
         }
 
+        selectedSquare = null;
         renderBoard();
 
         if (!game.game_over()) askStockfish();
+      });
+
+      square.addEventListener("click", () => {
+        if (resigned || !playerColor || !game || game.turn() !== playerColor || thinking || game.game_over()) return;
+
+        if (!selectedSquare) {
+          if (piece && piece.color === playerColor) {
+            selectedSquare = squareName;
+            renderBoard();
+          }
+          return;
+        }
+
+        if (selectedSquare === squareName) {
+          selectedSquare = null;
+          renderBoard();
+          return;
+        }
+
+        if (piece && piece.color === playerColor && selectedSquare !== squareName) {
+          selectedSquare = squareName;
+          renderBoard();
+          return;
+        }
+
+        handleMoveAttempt(selectedSquare, squareName);
       });
 
       boardElement.appendChild(square);
@@ -230,7 +345,7 @@ function renderBoard() {
 }
 
 function askStockfish() {
-  if (!engine || !engineReady || thinking || !game || game.game_over()) return;
+  if (!engine || !engineReady || thinking || !game || game.game_over() || resigned) return;
 
   thinking = true;
   candidateMoves.clear();
